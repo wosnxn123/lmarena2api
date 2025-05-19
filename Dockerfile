@@ -21,8 +21,8 @@ RUN go build -o /lmarena2api
 # 使用 Alpine 镜像作为最终镜像
 FROM alpine
 
-# 安装基本的运行时依赖
-RUN apk --no-cache add ca-certificates tzdata
+# 安装基本的运行时依赖和curl
+RUN apk --no-cache add ca-certificates tzdata curl
 
 # 从构建阶段复制可执行文件
 COPY --from=builder /lmarena2api .
