@@ -51,7 +51,7 @@ func GetAuthToken(c *gin.Context, cookie string) (string, error) {
 	if len(matches) > 1 {
 		return matches[1], nil
 	}
-	logger.SysLog(fmt.Sprintf("output: %v", output))
+	logger.SysError(fmt.Sprintf("output: %v", output))
 	return "", fmt.Errorf("未找到arena-auth-prod-v1 cookie")
 }
 
