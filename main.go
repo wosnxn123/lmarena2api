@@ -35,7 +35,6 @@ func main() {
 	var err error
 
 	model.InitTokenEncoders()
-	config.InitLACookies()
 
 	server := gin.New()
 	server.Use(gin.Recovery())
@@ -56,10 +55,13 @@ func main() {
 		logger.SysLog("running in DEBUG mode.")
 	}
 
+	config.InitLACookies()
+
 	logger.SysLog("lmarena2api start success. enjoy it! ^_^\n")
 
+	//if !config.AutoRegister {
 	go job.UpdateCookieTokenTask()
-
+	//}
 	err = server.Run(":" + port)
 
 	if err != nil {

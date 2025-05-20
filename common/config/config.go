@@ -1,16 +1,21 @@
 package config
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"lmarena2api/common/env"
 	"math/rand"
 	"os"
+	"os/exec"
 	"strings"
 	"sync"
 	"time"
 )
 
 var BackendSecret = os.Getenv("BACKEND_SECRET")
+var AutoRegister = env.Bool("AUTO_REGISTER", false)
 var LACookie = os.Getenv("LA_COOKIE")
 var MysqlDsn = os.Getenv("MYSQL_DSN")
 var IpBlackList = strings.Split(os.Getenv("IP_BLACK_LIST"), ",")
@@ -78,15 +83,37 @@ func InitLACookies() {
 
 	LACookies = []string{}
 
-	// 从环境变量中读取 LA_COOKIE 并拆分为切片
-	cookieStr := os.Getenv("LA_COOKIE")
-	if cookieStr != "" {
-
-		for _, cookie := range strings.Split(cookieStr, ",") {
-			cookie = strings.TrimSpace(cookie)
-			LACookies = append(LACookies, cookie)
-		}
+	//cookieStr := os.Getenv("LA_COOKIE")
+	//if AutoRegister {
+	/*task, err := yescaptcha.CreateTask()
+	if err != nil {
+		fmt.Println("创建任务失败:", err)
+		return
 	}
+	token, err := yescaptcha.GetTaskResult(task)
+	if err != nil {
+		fmt.Println("获取结果失败:", err)
+		return
+	}
+	resp, err := MakeSignUpRequest(token)
+	if err != nil {
+		fmt.Println("API请求失败:", err)
+		return
+	}*/
+	cookieStr := "base64-" + "eyJhY2Nlc3NfdG9rZW4iOiJleUpoYkdjaU9pSklVekkxTmlJc0ltdHBaQ0k2SWtOVFQwNHhkM05uU0hkRlNFTkNNbGNpTENKMGVYQWlPaUpLVjFRaWZRLmV5SnBjM01pT2lKb2RIUndjem92TDJoMWIyZDZiMlZ4ZW1OeVpIWnJkM1IyYjJScExuTjFjR0ZpWVhObExtTnZMMkYxZEdndmRqRWlMQ0p6ZFdJaU9pSTVOekEyT1dGa055MDFPRGcxTFRRd056VXRZamhrT0MxalptSXdaak16Wm1KaE5qVWlMQ0poZFdRaU9pSmhkWFJvWlc1MGFXTmhkR1ZrSWl3aVpYaHdJam94TnpRM056UXdNVFUzTENKcFlYUWlPakUzTkRjM016WTFOVGNzSW1WdFlXbHNJam9pSWl3aWNHaHZibVVpT2lJaUxDSmhjSEJmYldWMFlXUmhkR0VpT250OUxDSjFjMlZ5WDIxbGRHRmtZWFJoSWpwN0ltbGtJam9pTmpRMU1qa3hOR010TWpKaE15MDBPREF6TFdJd1lqUXRPRGd6T1RBNE56aG1ZVGRrSW4wc0luSnZiR1VpT2lKaGRYUm9aVzUwYVdOaGRHVmtJaXdpWVdGc0lqb2lZV0ZzTVNJc0ltRnRjaUk2VzNzaWJXVjBhRzlrSWpvaVlXNXZibmx0YjNWeklpd2lkR2x0WlhOMFlXMXdJam94TnpRM05qWXlNREEyZlYwc0luTmxjM05wYjI1ZmFXUWlPaUkzTWpWbU9EazJOQzAyTjJFNExUUm1NREl0T0RoaU9DMDFPREptTkRVeE56VTBOV1VpTENKcGMxOWhibTl1ZVcxdmRYTWlPblJ5ZFdWOS43SmZzSm1ETm5ibTZ6ckE0ckRjM2RSdXhnbWRCcENUVGx6WHNmcnpJeGEwIiwidG9rZW5fdHlwZSI6ImJlYXJlciIsImV4cGlyZXNfaW4iOjM2MDAsImV4cGlyZXNfYXQiOjE3MzA0MjAwMDAsInJlZnJlc2hfdG9rZW4iOiIyaWlueTdlNXE0Zm4iLCJ1c2VyIjp7ImlkIjoiOTcwNjlhZDctNTg4NS00MDc1LWI4ZDgtY2ZiMGYzM2ZiYTY1IiwiYXVkIjoiYXV0aGVudGljYXRlZCIsInJvbGUiOiJhdXRoZW50aWNhdGVkIiwiZW1haWwiOiIiLCJwaG9uZSI6IiIsImxhc3Rfc2lnbl9pbl9hdCI6IjIwMjUtMDUtMTlUMTM6NDA6MDYuNjcxNDU3WiIsImFwcF9tZXRhZGF0YSI6e30sInVzZXJfbWV0YWRhdGEiOnsiaWQiOiI2NDUyOTE0Yy0yMmEzLTQ4MDMtYjBiNC04ODM5MDg3OGZhN2QifSwiaWRlbnRpdGllcyI6W10sImNyZWF0ZWRfYXQiOiIyMDI1LTA1LTE5VDEzOjQwOjA2LjY2OTg5WiIsInVwZGF0ZWRfYXQiOiIyMDI1LTA1LTIwVDEwOjIyOjM3LjA5MjM2MVoiLCJpc19hbm9ueW1vdXMiOnRydWV9fQ=="
+	//}
+	// 从环境变量中读取 LA_COOKIE 并拆分为切片
+	//if cookieStr != "" {
+	//
+	//	for _, cookie := range strings.Split(cookieStr, ",") {
+	//		cookie = strings.TrimSpace(cookie)
+	LACookies = append(LACookies, cookieStr)
+	LATokenMap[cookieStr] = LATokenInfo{
+		NewCookie: cookieStr,
+		//		// 其他字段如果需要的话也可以设置
+	}
+	//}
+	//}
 }
 
 type CookieManager struct {
@@ -183,4 +210,49 @@ func RemoveCookie(cookieToRemove string) {
 
 	// 更新 GSCookies
 	LACookies = newCookies
+}
+
+func MakeSignUpRequest(token string) (string, error) {
+	// 构建请求数据
+	requestData := fmt.Sprintf(`{"turnstile_token":"%s"}`, token)
+
+	// 构建curl命令
+	cmd := exec.Command("curl",
+		"https://beta.lmarena.ai/api/sign-up",
+		"-H", "accept: */*",
+		"-H", "accept-language: en-US,en;q=0.9",
+		"-H", "cookie: cf_clearance=20VPnkBAX4ekFnvhZAC6JJMR27HmPUqbjqTrj_N5RYE-1747743176-1.2.1.1-QC67qVWttXKkZs3RaGtGRs4xgzylmNjJFa2tbq2ZPqDqsmVQUPom4lB.vkDCImUwjzCKQi93eteDYgPaU7ntpnrVW08e3rQVJlpu42HWambeMrLa7.YRjhddbx8o5Fjq6NJ2tqBI_kiiCbB_r5kAEe_mjmFbhc6w46QLdwcLdKl4GyMTGektNXpKabYPWhCIB40wZf31cWyzq6akRGSoCIRiHP8UvDHkaTJnGNDBbA4uGU8zZC6gYT.kw7D_MLhpBLjZgGhEnONQMmr0L.Ci_XGEltfj8HbJUtwuFqSjvXD3H7ZmBYWMICImqtjNN28jbFhllGBLElhxHDaSPPF3MB5YtFPUvGIerqQAbRxAzk_VKGCGnsYiBFm7zlcur5pi;",
+		"-H", "content-type: text/plain;charset=UTF-8",
+		"-H", "origin: https://beta.lmarena.ai",
+		"-H", "priority: u=1, i",
+		"-H", "referer: https://beta.lmarena.ai/",
+		"-H", "sec-ch-ua: \"Google Chrome\";v=\"135\", \"Not-A.Brand\";v=\"8\", \"Chromium\";v=\"135\"",
+		"-H", "sec-ch-ua-mobile: ?0",
+		"-H", "sec-ch-ua-platform: \"macOS\"",
+		"-H", "sec-fetch-dest: empty",
+		"-H", "sec-fetch-mode: cors",
+		"-H", "sec-fetch-site: same-origin",
+		"-H", "user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+		"--data-raw", requestData,
+		"-s") // 添加-s参数使curl静默输出，不显示进度信息
+
+	// 执行命令并获取输出
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("执行curl命令失败: %v, 输出: %s", err, string(output))
+	}
+
+	// 提取JSON部分（假设响应是一个完整的JSON对象）
+	jsonStr := string(output)
+
+	// 检查是否为有效的JSON
+	var jsonObj interface{}
+	if err := json.Unmarshal([]byte(jsonStr), &jsonObj); err != nil {
+		return "", fmt.Errorf("解析JSON失败: %v", err)
+	}
+
+	// 将JSON转换为Base64
+	base64Str := base64.StdEncoding.EncodeToString([]byte(jsonStr))
+
+	return base64Str, nil
 }

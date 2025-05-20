@@ -1,6 +1,8 @@
 package lmarena_api
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"lmarena2api/common"
@@ -9,7 +11,6 @@ import (
 	"lmarena2api/cycletls"
 	"os/exec"
 	"regexp"
-	"strings"
 )
 
 const (
@@ -56,11 +57,6 @@ func GetAuthToken(c *gin.Context, cookie string) (string, error) {
 }
 
 func MakeStreamChatRequest(c *gin.Context, client cycletls.CycleTLS, jsonData []byte, cookie string, modelInfo common.ModelInfo) (<-chan cycletls.SSEResponse, error) {
-	split := strings.Split(cookie, "=")
-	if len(split) >= 2 {
-		cookie = split[0]
-	}
-
 	tokenInfo, ok := config.LATokenMap[cookie]
 	if !ok {
 		return nil, fmt.Errorf("cookie not found in ASTokenMap")
@@ -92,4 +88,49 @@ func MakeStreamChatRequest(c *gin.Context, client cycletls.CycleTLS, jsonData []
 		return nil, fmt.Errorf("Failed to make stream request: %v", err)
 	}
 	return sseChan, nil
+}
+
+func MakeSignUpRequest(token string) (string, error) {
+	// 构建请求数据
+	requestData := fmt.Sprintf(`{"turnstile_token":"%s"}`, token)
+
+	// 构建curl命令
+	cmd := exec.Command("curl",
+		"https://beta.lmarena.ai/api/sign-up",
+		"-H", "accept: */*",
+		"-H", "accept-language: en-US,en;q=0.9",
+		"-H", "cookie: cf_clearance=20VPnkBAX4ekFnvhZAC6JJMR27HmPUqbjqTrj_N5RYE-1747743176-1.2.1.1-QC67qVWttXKkZs3RaGtGRs4xgzylmNjJFa2tbq2ZPqDqsmVQUPom4lB.vkDCImUwjzCKQi93eteDYgPaU7ntpnrVW08e3rQVJlpu42HWambeMrLa7.YRjhddbx8o5Fjq6NJ2tqBI_kiiCbB_r5kAEe_mjmFbhc6w46QLdwcLdKl4GyMTGektNXpKabYPWhCIB40wZf31cWyzq6akRGSoCIRiHP8UvDHkaTJnGNDBbA4uGU8zZC6gYT.kw7D_MLhpBLjZgGhEnONQMmr0L.Ci_XGEltfj8HbJUtwuFqSjvXD3H7ZmBYWMICImqtjNN28jbFhllGBLElhxHDaSPPF3MB5YtFPUvGIerqQAbRxAzk_VKGCGnsYiBFm7zlcur5pi;",
+		"-H", "content-type: text/plain;charset=UTF-8",
+		"-H", "origin: https://beta.lmarena.ai",
+		"-H", "priority: u=1, i",
+		"-H", "referer: https://beta.lmarena.ai/",
+		"-H", "sec-ch-ua: \"Google Chrome\";v=\"135\", \"Not-A.Brand\";v=\"8\", \"Chromium\";v=\"135\"",
+		"-H", "sec-ch-ua-mobile: ?0",
+		"-H", "sec-ch-ua-platform: \"macOS\"",
+		"-H", "sec-fetch-dest: empty",
+		"-H", "sec-fetch-mode: cors",
+		"-H", "sec-fetch-site: same-origin",
+		"-H", "user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+		"--data-raw", requestData,
+		"-s") // 添加-s参数使curl静默输出，不显示进度信息
+
+	// 执行命令并获取输出
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("执行curl命令失败: %v, 输出: %s", err, string(output))
+	}
+
+	// 提取JSON部分（假设响应是一个完整的JSON对象）
+	jsonStr := string(output)
+
+	// 检查是否为有效的JSON
+	var jsonObj interface{}
+	if err := json.Unmarshal([]byte(jsonStr), &jsonObj); err != nil {
+		return "", fmt.Errorf("解析JSON失败: %v", err)
+	}
+
+	// 将JSON转换为Base64
+	base64Str := base64.StdEncoding.EncodeToString([]byte(jsonStr))
+
+	return base64Str, nil
 }
