@@ -61,6 +61,12 @@ func ChatForOpenAI(c *gin.Context) {
 		})
 		return
 	}
+
+	//if modelInfo.Type == "image" {
+	//	ImagesForOpenAI(c)
+	//	return
+	//}
+
 	//if openAIReq.MaxTokens > modelInfo.MaxTokens {
 	//	c.JSON(http.StatusBadRequest, model.OpenAIErrorResponse{
 	//		OpenAIError: model.OpenAIError{
@@ -89,7 +95,7 @@ func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, openAIReq 
 		return
 	}
 	for attempt := 0; attempt < maxRetries; attempt++ {
-		requestBody, err := createRequestBody(c, &openAIReq, modelInfo)
+		requestBody, err := createRequestBody(c, &openAIReq, modelInfo, "chat")
 		if err != nil {
 			c.JSON(500, gin.H{"error": err.Error()})
 			return
@@ -197,7 +203,7 @@ func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, openAIReq 
 	return
 }
 
-func createRequestBody(c *gin.Context, openAIReq *model.OpenAIChatCompletionRequest, modelInfo common.ModelInfo) (map[string]interface{}, error) {
+func createRequestBody(c *gin.Context, openAIReq *model.OpenAIChatCompletionRequest, modelInfo common.ModelInfo, chatType string) (map[string]interface{}, error) {
 	client := cycletls.Init()
 	defer safeClose(client)
 
@@ -353,7 +359,7 @@ func createRequestBody(c *gin.Context, openAIReq *model.OpenAIChatCompletionRequ
 		"userMessageId":   messageIDs[len(messageIDs)-1], // 最后一条用户消息的ID
 		"modelAMessageId": modelAMessageID,               // 新添加的助手消息ID
 		"messages":        arenaMessages,
-		"modality":        "chat",
+		"modality":        chatType,
 	}
 
 	// 记录请求体
@@ -468,19 +474,9 @@ func handleStreamRequest(c *gin.Context, client cycletls.CycleTLS, openAIReq mod
 		return
 	}
 
-	//cookie, err = kilo_api.GetAuthToken(c)
-
-	//if err != nil {
-	//	c.JSON(500, gin.H{"error": err.Error()})
-	//	return
-	//}
-
-	thinkStartType := new(bool)
-	thinkEndType := new(bool)
-
 	c.Stream(func(w io.Writer) bool {
 		for attempt := 0; attempt < maxRetries; attempt++ {
-			requestBody, err := createRequestBody(c, &openAIReq, modelInfo)
+			requestBody, err := createRequestBody(c, &openAIReq, modelInfo, "chat")
 			if err != nil {
 				c.JSON(500, gin.H{"error": err.Error()})
 				return false
@@ -542,7 +538,7 @@ func handleStreamRequest(c *gin.Context, client cycletls.CycleTLS, openAIReq mod
 
 				logger.Debug(ctx, strings.TrimSpace(data))
 
-				_, shouldContinue := processStreamData(c, data, responseId, openAIReq.Model, modelInfo, jsonData, thinkStartType, thinkEndType)
+				_, shouldContinue := processStreamData(c, data, responseId, openAIReq.Model, modelInfo, jsonData)
 				// 处理事件流数据
 
 				if !shouldContinue {
@@ -570,7 +566,7 @@ func handleStreamRequest(c *gin.Context, client cycletls.CycleTLS, openAIReq mod
 }
 
 // 处理流式数据的辅助函数，返回bool表示是否继续处理
-func processStreamData(c *gin.Context, data, responseId, model string, modelInfo common.ModelInfo, jsonData []byte, thinkStartType, thinkEndType *bool) (string, bool) {
+func processStreamData(c *gin.Context, data, responseId, model string, modelInfo common.ModelInfo, jsonData []byte) (string, bool) {
 	data = strings.TrimSpace(data)
 
 	// Handle [DONE] marker
@@ -664,6 +660,99 @@ func processNoStreamData(c *gin.Context, data string, modelInfo common.ModelInfo
 				unquotedText = text[1 : len(text)-1]
 			}
 			text = unquotedText
+		}
+
+		return text, true
+
+	case "af": // Message ID information
+		// This appears to be metadata about the message
+		return "", true
+
+	case "ae", "ad": // End of message or completion information
+		// These appear to be completion signals with usage information
+		return "", false
+
+	case "cookie": // Cookie information, likely for session management
+		// Process cookie if needed
+		return "", true
+
+	default:
+		logger.Warnf(c.Request.Context(), "Unknown prefix in stream data: %s", prefix)
+		return "", false
+	}
+
+}
+
+func processImageData(c *gin.Context, data string, modelInfo common.ModelInfo) (string, bool) {
+	data = strings.TrimSpace(data)
+
+	// Handle [DONE] marker
+	if data == "[DONE]" {
+		return "", false
+	}
+
+	// Parse the prefixed data format from the logs
+	parts := strings.SplitN(data, ":", 2)
+	if len(parts) != 2 {
+		logger.Errorf(c.Request.Context(), "Invalid data format: %s", data)
+		return "", false
+	}
+
+	prefix := parts[0]
+	content := parts[1]
+
+	switch prefix {
+	case "a0": // Text content
+		// Handle actual text content
+		text := content
+		// Remove quotes if present
+		if len(text) >= 2 && text[0] == '"' && text[len(text)-1] == '"' {
+			// 解析JSON字符串，处理转义字符
+			var unquotedText string
+			err := json.Unmarshal([]byte(text), &unquotedText)
+			if err != nil {
+				logger.Errorf(c.Request.Context(), "Failed to unquote text: %v", err)
+				// 如果解析失败，使用原始文本
+				unquotedText = text[1 : len(text)-1]
+			}
+			text = unquotedText
+		}
+
+		return text, true
+	case "a2":
+		text := content
+		// Remove quotes if present
+		if len(text) >= 2 && text[0] == '"' && text[len(text)-1] == '"' {
+			fmt.Println("text", text)
+		}
+
+		//var unquotedText string
+		//err := json.Unmarshal([]byte(text), &unquotedText)
+		//if err != nil {
+		//	logger.Errorf(c.Request.Context(), "Failed to unquote text: %v", err)
+		//	// 如果解析失败，使用原始文本
+		//	unquotedText = text[1 : len(text)-1]
+		//}
+		//text = unquotedText
+
+		var data []map[string]interface{}
+		err := json.Unmarshal([]byte(text), &data)
+		if err != nil {
+			logger.Errorf(c.Request.Context(), "Failed to unquote text: %v", err)
+			return "", false
+		}
+
+		// 检查是否有数据
+		if len(data) > 0 {
+			// 提取第一个元素的 image 值
+			if imageURL, ok := data[0]["image"].(string); ok {
+				logger.Debugf(c.Request.Context(), "Image URL: %s", imageURL)
+				return imageURL, true
+			} else {
+				logger.Errorf(c.Request.Context(), "Invalid image data: %s", data)
+			}
+		} else {
+			logger.Errorf(c.Request.Context(), "Invalid image data: %s", data)
 		}
 
 		return text, true
@@ -788,3 +877,127 @@ func safeClose(client cycletls.CycleTLS) {
 //
 //	return fmt.Sprintf("%s://%s%s", u.Scheme, u.Host, u.Path), nil
 //}
+
+func ImagesForOpenAI(c *gin.Context) {
+	client := cycletls.Init()
+	defer safeClose(client)
+
+	var openAIReq model.OpenAIImagesGenerationRequest
+	if err := c.BindJSON(&openAIReq); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+
+	modelInfo, b := common.GetModelInfo(openAIReq.Model)
+	if !b {
+		c.JSON(http.StatusBadRequest, model.OpenAIErrorResponse{
+			OpenAIError: model.OpenAIError{
+				Message: fmt.Sprintf("Model %s not supported", openAIReq.Model),
+				Type:    "invalid_request_error",
+				Code:    "invalid_model",
+			},
+		})
+		return
+	}
+
+	ctx := c.Request.Context()
+	cookieManager := config.NewCookieManager()
+	maxRetries := len(cookieManager.Cookies)
+	cookie, err := cookieManager.GetRandomCookie()
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	request := openAIReq.ToChatCompletionRequest()
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		requestBody, err := createRequestBody(c, request, modelInfo, "image")
+		if err != nil {
+			c.JSON(500, gin.H{"error": err.Error()})
+			return
+		}
+
+		jsonData, err := json.Marshal(requestBody)
+		if err != nil {
+			c.JSON(500, gin.H{"error": "Failed to marshal request body"})
+			return
+		}
+		sseChan, err := lmarena_api.MakeStreamChatRequest(c, client, jsonData, cookie, modelInfo)
+		if err != nil {
+			logger.Errorf(ctx, "MakeStreamChatRequest err on attempt %d: %v", attempt+1, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		isRateLimit := false
+	SSELoop:
+		for response := range sseChan {
+			data := response.Data
+			if data == "" {
+				continue
+			}
+			if response.Done {
+				switch {
+				case common.IsUsageLimitExceeded(data):
+					isRateLimit = true
+					logger.Warnf(ctx, "Cookie Usage limit exceeded, switching to next cookie, attempt %d/%d, COOKIE:%s", attempt+1, maxRetries, cookie)
+					config.RemoveCookie(cookie)
+					break SSELoop
+				case common.IsServerError(data):
+					logger.Errorf(ctx, errServerErrMsg)
+					c.JSON(http.StatusInternalServerError, gin.H{"error": errServerErrMsg})
+					return
+				case common.IsNotLogin(data):
+					isRateLimit = true
+					logger.Warnf(ctx, "Cookie Not Login, switching to next cookie, attempt %d/%d, COOKIE:%s", attempt+1, maxRetries, cookie)
+					break SSELoop
+				case common.IsRateLimit(data):
+					isRateLimit = true
+					logger.Warnf(ctx, "Cookie rate limited, switching to next cookie, attempt %d/%d, COOKIE:%s", attempt+1, maxRetries, cookie)
+					config.AddRateLimitCookie(cookie, time.Now().Add(time.Duration(config.RateLimitCookieLockDuration)*time.Second))
+					break SSELoop
+				}
+				logger.Warnf(ctx, response.Data)
+				return
+			}
+
+			logger.Debug(ctx, strings.TrimSpace(data))
+
+			imageData, ok := processImageData(c, data, modelInfo)
+			if !ok {
+				c.JSON(http.StatusInternalServerError, model.OpenAIErrorResponse{
+					OpenAIError: model.OpenAIError{
+						Message: "Invalid image data format",
+						Type:    "invalid_request_error",
+					},
+				})
+				return
+			}
+
+			// 返回成功响应
+			c.JSON(http.StatusOK, model.OpenAIImagesGenerationResponse{
+				Created: time.Now().Unix(),
+				Data: []*model.OpenAIImagesGenerationDataResponse{
+					{
+						URL: imageData,
+					},
+				},
+			})
+			return
+		}
+		if !isRateLimit {
+			return
+		}
+
+		// 获取下一个可用的cookie继续尝试
+		cookie, err = cookieManager.GetNextCookie()
+		if err != nil {
+			logger.Errorf(ctx, "No more valid cookies available after attempt %d", attempt+1)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+	}
+	logger.Errorf(ctx, "All cookies exhausted after %d attempts", maxRetries)
+	c.JSON(http.StatusInternalServerError, gin.H{"error": "All cookies are temporarily unavailable."})
+	return
+}

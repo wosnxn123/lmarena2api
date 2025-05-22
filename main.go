@@ -10,7 +10,6 @@ import (
 	"lmarena2api/common"
 	"lmarena2api/common/config"
 	logger "lmarena2api/common/loggger"
-	"lmarena2api/job"
 	"lmarena2api/middleware"
 	"lmarena2api/model"
 	"lmarena2api/router"
@@ -60,7 +59,7 @@ func main() {
 	logger.SysLog("lmarena2api start success. enjoy it! ^_^\n")
 
 	//if !config.AutoRegister {
-	go job.UpdateCookieTokenTask()
+	//go job.UpdateCookieTokenTask()
 	//}
 	err = server.Run(":" + port)
 

@@ -414,6 +414,42 @@ type OpenAIImagesGenerationResponse struct {
 	Suggestions []string                              `json:"suggestions"`
 }
 
+func (r *OpenAIImagesGenerationRequest) ToChatCompletionRequest() *OpenAIChatCompletionRequest {
+	// 创建消息数组，将Prompt作为用户消息
+	messages := []OpenAIChatMessage{
+		{
+			Role:    "user",
+			Content: r.Prompt,
+		},
+	}
+
+	// 如果有图像数据，添加到消息中
+	if r.Image != "" {
+		// 更新第一条消息为包含文本和图像的内容
+		messages[0].Content = []map[string]interface{}{
+			{
+				"type": "text",
+				"text": r.Prompt,
+			},
+			{
+				"type": "image_url",
+				"image_url": map[string]string{
+					"url": r.Image,
+				},
+			},
+		}
+	}
+
+	// 创建并返回聊天完成请求
+	return &OpenAIChatCompletionRequest{
+		Model:       r.Model,
+		Stream:      false,
+		Messages:    messages,
+		MaxTokens:   1024, // 默认值，可以根据需要调整
+		Temperature: 0.7,  // 默认值，可以根据需要调整
+	}
+}
+
 type OpenAIImagesGenerationDataResponse struct {
 	URL           string `json:"url"`
 	RevisedPrompt string `json:"revised_prompt"`

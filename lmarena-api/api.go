@@ -20,16 +20,16 @@ const (
 )
 
 func GetAuthToken(c *gin.Context, cookie string) (string, error) {
-	cmd := exec.Command("curl", "-i", "https://beta.lmarena.ai/api/refresh",
+	cmd := exec.Command("curl", "-i", "https://canary.lmarena.ai/api/refresh",
 		"-X", "POST",
 		"-H", "accept: */*",
 		"-H", "accept-language: zh-CN,zh;q=0.9",
 		"-H", "content-length: 0",
 		"-H", "content-type: application/json",
 		"-b", "arena-auth-prod-v1="+cookie,
-		"-H", "origin: https://beta.lmarena.ai",
+		"-H", "origin: https://canary.lmarena.ai",
 		"-H", "priority: u=1, i",
-		"-H", "referer: https://beta.lmarena.ai/c/81abf456-d419-456f-bd11-0fb8093fd7c9",
+		"-H", "referer: https://canary.lmarena.ai/c/81abf456-d419-456f-bd11-0fb8093fd7c9",
 		"-H", "sec-ch-ua: \"Chromium\";v=\"136\", \"Google Chrome\";v=\"136\", \"Not.A/Brand\";v=\"99\"",
 		"-H", "sec-ch-ua-full-version: 136.0.1613.16",
 		"-H", "sec-ch-ua-full-version-list: \"Chromium\";v=\"136.0.1613.16\", \"Google Chrome\";v=\"136.0.1613.16\", \"Not.A/Brand\";v=\"99.0.0.0\"",
@@ -61,28 +61,38 @@ func MakeStreamChatRequest(c *gin.Context, client cycletls.CycleTLS, jsonData []
 	if !ok {
 		return nil, fmt.Errorf("cookie not found in ASTokenMap")
 	}
-
 	headers := map[string]string{
-		"accept":          "*/*",
-		"accept-language": "zh-CN,zh;q=0.9",
-		"content-type":    "application/json",
-		"origin":          "https://beta.lmarena.ai",
-		"referer":         "https://beta.lmarena.ai/",
-		"supabase-jwt":    tokenInfo.NewCookie,
-		"user-agent":      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+		"accept":                      "*/*",
+		"accept-language":             "zh-CN,zh;q=0.9,en;q=0.8",
+		"content-type":                "text/plain;charset=UTF-8",
+		"origin":                      "https://canary.lmarena.ai",
+		"priority":                    "u=1, i",
+		"referer":                     "https://canary.lmarena.ai/",
+		"sec-ch-ua":                   "\"Chromium\";v=\"136\", \"Google Chrome\";v=\"136\", \"Not.A/Brand\";v=\"99\"",
+		"sec-ch-ua-full-version":      "136.0.1613.16",
+		"sec-ch-ua-full-version-list": "\"Chromium\";v=\"136.0.1613.16\", \"Google Chrome\";v=\"136.0.1613.16\", \"Not.A/Brand\";v=\"99.0.0.0\"",
+		"sec-ch-ua-mobile":            "?0",
+		"sec-ch-ua-platform":          "\"macOS\"",
+		"sec-fetch-dest":              "empty",
+		"sec-fetch-mode":              "cors",
+		"sec-fetch-site":              "same-origin",
+		"user-agent":                  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+		"cookie":                      "cf_clearance=" + config.CfClearance + ";" + "arena-auth-prod-v1=" + tokenInfo.NewCookie,
 	}
 
 	options := cycletls.Options{
-		Timeout: 10 * 60 * 60,
-		Proxy:   config.ProxyUrl, // 在每个请求中设置代理
-		Body:    string(jsonData),
-		Method:  "POST",
-		Headers: headers,
+		Ja3:       "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,0-23-65281-10-11-35-16-5-13-18-51-45-43-27-17513-21,29-23-24,0",
+		UserAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+		Timeout:   10 * 60 * 60,
+		Proxy:     config.ProxyUrl, // 在每个请求中设置代理
+		Body:      string(jsonData),
+		Method:    "POST",
+		Headers:   headers,
 	}
 
 	logger.Debug(c.Request.Context(), fmt.Sprintf("cookie: %v", cookie))
 
-	sseChan, err := client.DoSSE("https://arena-api-stable.vercel.app/evaluation", options, "POST")
+	sseChan, err := CurlSSE("https://canary.lmarena.ai/api/stream/create-evaluation", options)
 	if err != nil {
 		logger.Errorf(c, "Failed to make stream request: %v", err)
 		return nil, fmt.Errorf("Failed to make stream request: %v", err)
@@ -90,27 +100,28 @@ func MakeStreamChatRequest(c *gin.Context, client cycletls.CycleTLS, jsonData []
 	return sseChan, nil
 }
 
-func MakeSignUpRequest(token string) (string, error) {
+func MakeSignUpRequest(token string, cfClearance string) (string, error) {
 	// 构建请求数据
 	requestData := fmt.Sprintf(`{"turnstile_token":"%s"}`, token)
 
 	// 构建curl命令
 	cmd := exec.Command("curl",
-		"https://beta.lmarena.ai/api/sign-up",
+		//"-x", "http://206.237.11.11:52344",
+		"https://canary.lmarena.ai/api/sign-up",
 		"-H", "accept: */*",
 		"-H", "accept-language: en-US,en;q=0.9",
-		"-H", "cookie: cf_clearance=20VPnkBAX4ekFnvhZAC6JJMR27HmPUqbjqTrj_N5RYE-1747743176-1.2.1.1-QC67qVWttXKkZs3RaGtGRs4xgzylmNjJFa2tbq2ZPqDqsmVQUPom4lB.vkDCImUwjzCKQi93eteDYgPaU7ntpnrVW08e3rQVJlpu42HWambeMrLa7.YRjhddbx8o5Fjq6NJ2tqBI_kiiCbB_r5kAEe_mjmFbhc6w46QLdwcLdKl4GyMTGektNXpKabYPWhCIB40wZf31cWyzq6akRGSoCIRiHP8UvDHkaTJnGNDBbA4uGU8zZC6gYT.kw7D_MLhpBLjZgGhEnONQMmr0L.Ci_XGEltfj8HbJUtwuFqSjvXD3H7ZmBYWMICImqtjNN28jbFhllGBLElhxHDaSPPF3MB5YtFPUvGIerqQAbRxAzk_VKGCGnsYiBFm7zlcur5pi;",
+		"-H", "cookie: "+cfClearance,
 		"-H", "content-type: text/plain;charset=UTF-8",
-		"-H", "origin: https://beta.lmarena.ai",
+		"-H", "origin: https://canary.lmarena.ai",
 		"-H", "priority: u=1, i",
-		"-H", "referer: https://beta.lmarena.ai/",
+		"-H", "referer: https://canary.lmarena.ai/",
 		"-H", "sec-ch-ua: \"Google Chrome\";v=\"135\", \"Not-A.Brand\";v=\"8\", \"Chromium\";v=\"135\"",
 		"-H", "sec-ch-ua-mobile: ?0",
 		"-H", "sec-ch-ua-platform: \"macOS\"",
 		"-H", "sec-fetch-dest: empty",
 		"-H", "sec-fetch-mode: cors",
 		"-H", "sec-fetch-site: same-origin",
-		"-H", "user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+		"-H", "user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
 		"--data-raw", requestData,
 		"-s") // 添加-s参数使curl静默输出，不显示进度信息
 

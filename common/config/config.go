@@ -15,6 +15,7 @@ import (
 )
 
 var BackendSecret = os.Getenv("BACKEND_SECRET")
+var CfClearance = os.Getenv("CF_CLEARANCE")
 var AutoRegister = env.Bool("AUTO_REGISTER", false)
 var LACookie = os.Getenv("LA_COOKIE")
 var MysqlDsn = os.Getenv("MYSQL_DSN")
@@ -83,7 +84,7 @@ func InitLACookies() {
 
 	LACookies = []string{}
 
-	//cookieStr := os.Getenv("LA_COOKIE")
+	cookieStr := os.Getenv("LA_COOKIE")
 	//if AutoRegister {
 	/*task, err := yescaptcha.CreateTask()
 	if err != nil {
@@ -100,19 +101,19 @@ func InitLACookies() {
 		fmt.Println("API请求失败:", err)
 		return
 	}*/
-	cookieStr := "base64-" + "eyJhY2Nlc3NfdG9rZW4iOiJleUpoYkdjaU9pSklVekkxTmlJc0ltdHBaQ0k2SWtOVFQwNHhkM05uU0hkRlNFTkNNbGNpTENKMGVYQWlPaUpLVjFRaWZRLmV5SnBjM01pT2lKb2RIUndjem92TDJoMWIyZDZiMlZ4ZW1OeVpIWnJkM1IyYjJScExuTjFjR0ZpWVhObExtTnZMMkYxZEdndmRqRWlMQ0p6ZFdJaU9pSTVOekEyT1dGa055MDFPRGcxTFRRd056VXRZamhrT0MxalptSXdaak16Wm1KaE5qVWlMQ0poZFdRaU9pSmhkWFJvWlc1MGFXTmhkR1ZrSWl3aVpYaHdJam94TnpRM056UXdNVFUzTENKcFlYUWlPakUzTkRjM016WTFOVGNzSW1WdFlXbHNJam9pSWl3aWNHaHZibVVpT2lJaUxDSmhjSEJmYldWMFlXUmhkR0VpT250OUxDSjFjMlZ5WDIxbGRHRmtZWFJoSWpwN0ltbGtJam9pTmpRMU1qa3hOR010TWpKaE15MDBPREF6TFdJd1lqUXRPRGd6T1RBNE56aG1ZVGRrSW4wc0luSnZiR1VpT2lKaGRYUm9aVzUwYVdOaGRHVmtJaXdpWVdGc0lqb2lZV0ZzTVNJc0ltRnRjaUk2VzNzaWJXVjBhRzlrSWpvaVlXNXZibmx0YjNWeklpd2lkR2x0WlhOMFlXMXdJam94TnpRM05qWXlNREEyZlYwc0luTmxjM05wYjI1ZmFXUWlPaUkzTWpWbU9EazJOQzAyTjJFNExUUm1NREl0T0RoaU9DMDFPREptTkRVeE56VTBOV1VpTENKcGMxOWhibTl1ZVcxdmRYTWlPblJ5ZFdWOS43SmZzSm1ETm5ibTZ6ckE0ckRjM2RSdXhnbWRCcENUVGx6WHNmcnpJeGEwIiwidG9rZW5fdHlwZSI6ImJlYXJlciIsImV4cGlyZXNfaW4iOjM2MDAsImV4cGlyZXNfYXQiOjE3MzA0MjAwMDAsInJlZnJlc2hfdG9rZW4iOiIyaWlueTdlNXE0Zm4iLCJ1c2VyIjp7ImlkIjoiOTcwNjlhZDctNTg4NS00MDc1LWI4ZDgtY2ZiMGYzM2ZiYTY1IiwiYXVkIjoiYXV0aGVudGljYXRlZCIsInJvbGUiOiJhdXRoZW50aWNhdGVkIiwiZW1haWwiOiIiLCJwaG9uZSI6IiIsImxhc3Rfc2lnbl9pbl9hdCI6IjIwMjUtMDUtMTlUMTM6NDA6MDYuNjcxNDU3WiIsImFwcF9tZXRhZGF0YSI6e30sInVzZXJfbWV0YWRhdGEiOnsiaWQiOiI2NDUyOTE0Yy0yMmEzLTQ4MDMtYjBiNC04ODM5MDg3OGZhN2QifSwiaWRlbnRpdGllcyI6W10sImNyZWF0ZWRfYXQiOiIyMDI1LTA1LTE5VDEzOjQwOjA2LjY2OTg5WiIsInVwZGF0ZWRfYXQiOiIyMDI1LTA1LTIwVDEwOjIyOjM3LjA5MjM2MVoiLCJpc19hbm9ueW1vdXMiOnRydWV9fQ=="
+	//cookieStr := "base64-" + "eyJhY2Nlc3NfdG9rZW4iOiJleUpoYkdjaU9pSklVekkxTmlJc0ltdHBaQ0k2SWtOVFQwNHhkM05uU0hkRlNFTkNNbGNpTENKMGVYQWlPaUpLVjFRaWZRLmV5SnBjM01pT2lKb2RIUndjem92TDJoMWIyZDZiMlZ4ZW1OeVpIWnJkM1IyYjJScExuTjFjR0ZpWVhObExtTnZMMkYxZEdndmRqRWlMQ0p6ZFdJaU9pSTVOekEyT1dGa055MDFPRGcxTFRRd056VXRZamhrT0MxalptSXdaak16Wm1KaE5qVWlMQ0poZFdRaU9pSmhkWFJvWlc1MGFXTmhkR1ZrSWl3aVpYaHdJam94TnpRM056UXdNVFUzTENKcFlYUWlPakUzTkRjM016WTFOVGNzSW1WdFlXbHNJam9pSWl3aWNHaHZibVVpT2lJaUxDSmhjSEJmYldWMFlXUmhkR0VpT250OUxDSjFjMlZ5WDIxbGRHRmtZWFJoSWpwN0ltbGtJam9pTmpRMU1qa3hOR010TWpKaE15MDBPREF6TFdJd1lqUXRPRGd6T1RBNE56aG1ZVGRrSW4wc0luSnZiR1VpT2lKaGRYUm9aVzUwYVdOaGRHVmtJaXdpWVdGc0lqb2lZV0ZzTVNJc0ltRnRjaUk2VzNzaWJXVjBhRzlrSWpvaVlXNXZibmx0YjNWeklpd2lkR2x0WlhOMFlXMXdJam94TnpRM05qWXlNREEyZlYwc0luTmxjM05wYjI1ZmFXUWlPaUkzTWpWbU9EazJOQzAyTjJFNExUUm1NREl0T0RoaU9DMDFPREptTkRVeE56VTBOV1VpTENKcGMxOWhibTl1ZVcxdmRYTWlPblJ5ZFdWOS43SmZzSm1ETm5ibTZ6ckE0ckRjM2RSdXhnbWRCcENUVGx6WHNmcnpJeGEwIiwidG9rZW5fdHlwZSI6ImJlYXJlciIsImV4cGlyZXNfaW4iOjM2MDAsImV4cGlyZXNfYXQiOjE3MzA0MjAwMDAsInJlZnJlc2hfdG9rZW4iOiIyaWlueTdlNXE0Zm4iLCJ1c2VyIjp7ImlkIjoiOTcwNjlhZDctNTg4NS00MDc1LWI4ZDgtY2ZiMGYzM2ZiYTY1IiwiYXVkIjoiYXV0aGVudGljYXRlZCIsInJvbGUiOiJhdXRoZW50aWNhdGVkIiwiZW1haWwiOiIiLCJwaG9uZSI6IiIsImxhc3Rfc2lnbl9pbl9hdCI6IjIwMjUtMDUtMTlUMTM6NDA6MDYuNjcxNDU3WiIsImFwcF9tZXRhZGF0YSI6e30sInVzZXJfbWV0YWRhdGEiOnsiaWQiOiI2NDUyOTE0Yy0yMmEzLTQ4MDMtYjBiNC04ODM5MDg3OGZhN2QifSwiaWRlbnRpdGllcyI6W10sImNyZWF0ZWRfYXQiOiIyMDI1LTA1LTE5VDEzOjQwOjA2LjY2OTg5WiIsInVwZGF0ZWRfYXQiOiIyMDI1LTA1LTIwVDEwOjIyOjM3LjA5MjM2MVoiLCJpc19hbm9ueW1vdXMiOnRydWV9fQ=="
 	//}
 	// 从环境变量中读取 LA_COOKIE 并拆分为切片
 	//if cookieStr != "" {
 	//
-	//	for _, cookie := range strings.Split(cookieStr, ",") {
-	//		cookie = strings.TrimSpace(cookie)
-	LACookies = append(LACookies, cookieStr)
-	LATokenMap[cookieStr] = LATokenInfo{
-		NewCookie: cookieStr,
-		//		// 其他字段如果需要的话也可以设置
+	for _, cookie := range strings.Split(cookieStr, ",") {
+		cookie = strings.TrimSpace(cookie)
+		LACookies = append(LACookies, cookieStr)
+		LATokenMap[cookieStr] = LATokenInfo{
+			NewCookie: cookieStr,
+			// 其他字段如果需要的话也可以设置
+		}
 	}
-	//}
 	//}
 }
 
