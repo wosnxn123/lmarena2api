@@ -3,7 +3,7 @@ package common
 import "time"
 
 var StartTime = time.Now().Unix() // unit: second
-var Version = "v0.0.3"            // this hard coding will be replaced automatically when building, no need to manually change
+var Version = "v0.0.4"            // this hard coding will be replaced automatically when building, no need to manually change
 
 type ModelInfo struct {
 	Model string
@@ -25,6 +25,8 @@ var ModelRegistry = map[string]ModelInfo{
 	"grok-3-mini-beta":                        {"grok-3-mini-beta", "7699c8d4-0742-42f9-a117-d10e84688dab", "chat"},
 	"o3-2025-04-16":                           {"o3-2025-04-16", "cb0f1e24-e8e9-4745-aabc-b926ffde7475", "chat"},
 	"claude-3-7-sonnet-20250219":              {"claude-3-7-sonnet-20250219", "c5a11495-081a-4dc6-8d9a-64a4fd6f7bbc", "chat"},
+	"claude-opus-4-20250514":                  {"claude-opus-4-20250514", "ee116d12-64d6-48a8-88e5-b2d06325cdd2", "chat"},
+	"claude-sonnet-4-20250514":                {"claude-3-7-sonnet-20250219", "ac44dd10-0666-451c-b824-386ccfea7bcc", "chat"},
 	"claude-3-5-haiku-20241022":               {"claude-3-5-haiku-20241022", "f6fbf06c-532c-4c8a-89c7-f3ddcfb34bd1", "chat"},
 	"o4-mini-2025-04-16":                      {"o4-mini-2025-04-16", "f1102bbf-34ca-468f-a9fc-14bcf63f315b", "chat"},
 	"o3-mini":                                 {"o3-mini", "c680645e-efac-4a81-b0af-da16902b2541", "chat"},
