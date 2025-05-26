@@ -92,7 +92,7 @@ func MakeStreamChatRequest(c *gin.Context, client cycletls.CycleTLS, jsonData []
 
 	logger.Debug(c.Request.Context(), fmt.Sprintf("cookie: %v", cookie))
 
-	sseChan, err := CurlSSE("https://canary.lmarena.ai/api/stream/create-evaluation", options)
+	sseChan, err := CurlSSE(c.Request.Context(), "https://canary.lmarena.ai/api/stream/create-evaluation", options)
 	if err != nil {
 		logger.Errorf(c, "Failed to make stream request: %v", err)
 		return nil, fmt.Errorf("Failed to make stream request: %v", err)

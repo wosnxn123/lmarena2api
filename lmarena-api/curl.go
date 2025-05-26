@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	logger "lmarena2api/common/loggger"
 	"lmarena2api/cycletls"
 	"os/exec"
 	"strings"
@@ -13,87 +14,59 @@ import (
 
 // 首先定义一个新的函数，使用curl命令执行SSE请求并返回与原函数相同类型的通道
 // CurlSSE 使用curl命令执行SSE请求并返回响应通道
-func CurlSSE(url string, options cycletls.Options) (<-chan cycletls.SSEResponse, error) {
-	// 创建一个通道用于发送SSE响应
+func CurlSSE(parentCtx context.Context, url string, options cycletls.Options) (<-chan cycletls.SSEResponse, error) {
 	sseChan := make(chan cycletls.SSEResponse)
 
-	// 构建curl命令所需参数
 	headers := options.Headers
 	data := options.Body
-
-	// 从headers中提取cookie
 	cookie := ""
 	if cookieVal, exists := headers["cookie"]; exists {
 		cookie = cookieVal
-		// 从headers中删除cookie，因为curl命令会使用-b参数
 		delete(headers, "cookie")
 	}
 
-	// 创建上下文，可用于取消操作
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(parentCtx)
+	curlExecutionTimeoutSeconds := 300 // curl 命令自身超时时间 (秒)
 
-	// 在goroutine中执行curl命令
 	go func() {
-		defer close(sseChan) // 确保在函数结束时关闭通道
-		defer cancel()       // 确保取消上下文
+		defer close(sseChan)
+		defer cancel()
 
-		// 构建基本命令
 		args := []string{
-			"-N",          // 禁用缓冲
-			"--no-buffer", // 禁用输出缓冲
+			"-N",
+			"--no-buffer",
+			"--max-time", fmt.Sprintf("%d", curlExecutionTimeoutSeconds),
 			url,
 		}
-
-		// 添加headers
 		for key, value := range headers {
 			args = append(args, "-H", fmt.Sprintf("%s: %s", key, value))
 		}
-
-		// 添加cookies
 		if cookie != "" {
 			args = append(args, "-b", cookie)
 		}
-
-		// 添加数据
 		if data != "" {
 			args = append(args, "--data-raw", data)
 		}
 
-		// 创建命令
 		cmd := exec.CommandContext(ctx, "curl", args...)
+		logger.Debug(ctx, fmt.Sprintf("Executing curl for SSE: curl %s", strings.Join(args, " ")))
 
-		// 获取输出管道
 		stdout, err := cmd.StdoutPipe()
 		if err != nil {
-			sseChan <- cycletls.SSEResponse{
-				Status: 500,
-				Data:   fmt.Sprintf("创建stdout管道失败: %v", err),
-				Done:   true,
-			}
+			sseChan <- cycletls.SSEResponse{Status: 500, Data: fmt.Sprintf("创建stdout管道失败: %v", err), Done: true}
 			return
 		}
-
 		stderr, err := cmd.StderrPipe()
 		if err != nil {
-			sseChan <- cycletls.SSEResponse{
-				Status: 500,
-				Data:   fmt.Sprintf("创建stderr管道失败: %v", err),
-				Done:   true,
-			}
+			sseChan <- cycletls.SSEResponse{Status: 500, Data: fmt.Sprintf("创建stderr管道失败: %v", err), Done: true}
 			return
 		}
 
-		// 启动命令
 		if err := cmd.Start(); err != nil {
-			sseChan <- cycletls.SSEResponse{
-				Status: 500,
-				Data:   fmt.Sprintf("启动命令失败: %v", err),
-				Done:   true,
-			}
+			sseChan <- cycletls.SSEResponse{Status: 500, Data: fmt.Sprintf("启动命令失败: %v", err), Done: true}
 			return
 		}
 
-		// 处理标准错误（仅记录，不发送到通道）
 		go func() {
 			scanner := bufio.NewScanner(stderr)
 			for scanner.Scan() {
@@ -101,81 +74,62 @@ func CurlSSE(url string, options cycletls.Options) (<-chan cycletls.SSEResponse,
 				case <-ctx.Done():
 					return
 				default:
-					// 可以记录错误，但不发送到通道
-					// fmt.Fprintf(os.Stderr, "STDERR: %s\n", scanner.Text())
+					logger.Warnf(ctx, "curl STDERR: %s", scanner.Text())
 				}
 			}
 		}()
 
-		// 处理标准输出 - 使用更低级别的读取方式以避免缓冲
 		reader := bufio.NewReader(stdout)
-		var line string
-		//var err error
+		var lineRead string
+		var readErr error
 
+	ReadLoop:
 		for {
 			select {
 			case <-ctx.Done():
-				return
+				logger.Debug(ctx, "CurlSSE: Context done, exiting read loop.")
+				break ReadLoop
 			default:
-				// 逐行读取，不使用Scanner以避免可能的缓冲
-				line, err = reader.ReadString('\n')
-				if err != nil {
-					if err == io.EOF {
-						// 正常结束
-						break
+				lineRead, readErr = reader.ReadString('\n')
+				if readErr != nil {
+					if readErr == io.EOF {
+						break ReadLoop
 					}
-					// 其他错误
-					sseChan <- cycletls.SSEResponse{
-						Status: 500,
-						Data:   fmt.Sprintf("读取stdout出错: %v", err),
-						Done:   true,
+					if ctx.Err() == nil { // 仅当不是因为上下文取消导致的错误时发送
+						sseChan <- cycletls.SSEResponse{Status: 500, Data: fmt.Sprintf("读取stdout出错: %v", readErr), Done: true}
 					}
-					return
+					return // 退出 goroutine
 				}
-
-				// 去除行尾的换行符
-				line = strings.TrimRight(line, "\r\n")
-				if line == "" {
+				lineRead = strings.TrimRight(lineRead, "\r\n")
+				if lineRead == "" {
 					continue
 				}
-
-				// 直接发送每一行数据
-				sseChan <- cycletls.SSEResponse{
-					Status: 200,
-					Data:   line,
-					Done:   false,
-				}
-
-				// 立即刷新，确保数据被发送
-				// 这里不需要特别操作，因为通道发送是同步的
-			}
-
-			if err == io.EOF {
-				break
+				sseChan <- cycletls.SSEResponse{Status: 200, Data: lineRead, Done: false}
 			}
 		}
 
-		// 等待命令完成
-		if err := cmd.Wait(); err != nil {
-			// 只有在非EOF错误时才发送错误消息
-			if err != io.EOF {
-				sseChan <- cycletls.SSEResponse{
-					Status: 500,
-					Data:   fmt.Sprintf("命令执行错误: %v", err),
-					Done:   true,
+		waitErr := cmd.Wait()
+		if waitErr != nil {
+			logger.Errorf(ctx, "CurlSSE: cmd.Wait() error: %v", waitErr)
+			if ctx.Err() == nil { // 如果错误不是由父上下文取消引起的
+				errMsg := fmt.Sprintf("命令执行错误: %v", waitErr)
+				if exitErr, ok := waitErr.(*exec.ExitError); ok && len(exitErr.Stderr) > 0 {
+					errMsg = fmt.Sprintf("命令执行错误: %v, stderr: %s", waitErr, string(exitErr.Stderr))
 				}
-				return
+				// 避免在读取错误已发送 Done:true 后再次发送
+				if readErr == io.EOF { // 仅当读取正常结束时，才将 Wait 错误视为新的终止原因
+					sseChan <- cycletls.SSEResponse{Status: 500, Data: errMsg, Done: true}
+				}
 			}
+			return // 退出 goroutine
 		}
 
-		// 发送完成标记
-		sseChan <- cycletls.SSEResponse{
-			Status: 200,
-			Data:   "[DONE]",
-			Done:   true,
+		// 如果读取循环正常结束 (EOF) 并且 cmd.Wait() 没有错误 (或者错误是由于上下文取消)
+		// 并且之前没有发送过 Done:true 的错误消息
+		if readErr == io.EOF && (waitErr == nil || ctx.Err() != nil) {
+			sseChan <- cycletls.SSEResponse{Status: 200, Data: "[DONE]", Done: true}
 		}
 	}()
-
 	return sseChan, nil
 }
 
