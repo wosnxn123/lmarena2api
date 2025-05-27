@@ -408,10 +408,8 @@ type OpenAIImagesGenerationRequest struct {
 }
 
 type OpenAIImagesGenerationResponse struct {
-	Created     int64                                 `json:"created"`
-	DailyLimit  bool                                  `json:"dailyLimit"`
-	Data        []*OpenAIImagesGenerationDataResponse `json:"data"`
-	Suggestions []string                              `json:"suggestions"`
+	Created int64                                 `json:"created"`
+	Data    []*OpenAIImagesGenerationDataResponse `json:"data"`
 }
 
 func (r *OpenAIImagesGenerationRequest) ToChatCompletionRequest() *OpenAIChatCompletionRequest {
