@@ -978,7 +978,8 @@ func ImagesForOpenAI(c *gin.Context) {
 				Created: time.Now().Unix(),
 				Data: []*model.OpenAIImagesGenerationDataResponse{
 					{
-						URL: imageData,
+						URL:           imageData,
+						RevisedPrompt: openAIReq.Prompt,
 					},
 				},
 			})
