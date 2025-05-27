@@ -8,10 +8,11 @@
 _觉得有点意思的话 别忘了点个 ⭐_
 
 <a href="https://t.me/+0fYkYY_zUZYzNzRl">
-  <img src="https://img.shields.io/badge/Telegram-加入交流群-0088cc?style=for-the-badge&logo=telegram&logoColor=white" alt="Telegram 交流群" />
+  <img src="https://img.shields.io/badge/Telegram-AI Wave交流群-0088cc?style=for-the-badge&logo=telegram&logoColor=white" alt="Telegram 交流群" />
 </a>
 
 <sup><i>AI Wave 社群</i></sup> · <sup><i>(群内提供公益API、AI机器人)</i></sup>
+
 
 </div>
 
