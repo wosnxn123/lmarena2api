@@ -16,7 +16,7 @@ _觉得有点意思的话 别忘了点个 ⭐_
 
 </div>
 
-> ⚠️**由于`lmarena`使用的是`Cloudflare`的交互式质询验证,因此强烈建议在`win`/`mac`环境下部署项目,启动完成后可使用内网穿透公网访问。**
+> ⚠️**由于`lmarena`使用的是`Cloudflare`的交互式质询验证,因此强烈建议在[`win`/`mac`环境下部署](#mac本地部署推荐)项目,启动完成后可使用内网穿透公网访问。**
 
 ## 功能
 
@@ -49,7 +49,13 @@ _觉得有点意思的话 别忘了点个 ⭐_
 
 ## 部署
 
+
+
 ### Mac本地部署[推荐]
+
+在[Releases发布页](https://github.com/deanxv/lmarena2api/releases)下载环境对应的`lmarena2api`文件,并将其放置在你想要的目录下。
+
+终端执行:
 
 ```shell
 nohup env CF_CLEARANCE=****** DEBUG=true LA_COOKIE=****** API_SECRET=123456  ./lmarena2api-macos > logfile.log 2>&1 &
