@@ -451,7 +451,7 @@ func (r *OpenAIImagesGenerationRequest) ToChatCompletionRequest() *OpenAIChatCom
 type OpenAIImagesGenerationDataResponse struct {
 	URL           string `json:"url"`
 	RevisedPrompt string `json:"revised_prompt"`
-	//B64Json       string `json:"b64_json"`
+	B64Json       string `json:"b64_json"`
 }
 
 type OpenAIGPT4VImagesReq struct {

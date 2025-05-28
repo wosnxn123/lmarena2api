@@ -2,10 +2,16 @@ package cycletls
 
 import (
 	"bufio"
+	"context"
+	go_tls "crypto/tls"
 	"encoding/json"
 	"flag"
 	"fmt"
 	http "github.com/Danny-Dasilva/fhttp"
+	go_http2 "golang.org/x/net/http2"
+	go_http "net/http"
+
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"io"
 	"log"
@@ -415,6 +421,212 @@ type SSEResponse struct {
 	Data      string
 	Done      bool
 	FinalUrl  string // 添加 FinalUrl 字段
+}
+
+// 创建一个完整的 SSE 请求函数，使用 HTTP/2
+func DoSSEWithHTTP2(ctx context.Context, endPoint string, method string, headers map[string]string, body string, proxyURL string) (chan SSEResponse, error) {
+	// 创建唯一的请求 ID
+	requestID := uuid.New().String()
+
+	// 创建 SSE 响应通道
+	sseChan := make(chan SSEResponse)
+
+	// 创建 HTTP 客户端
+	transport := &go_http.Transport{
+		TLSClientConfig: &go_tls.Config{
+			// 根据需要设置 InsecureSkipVerify
+			InsecureSkipVerify: false,
+		},
+	}
+
+	// 设置代理（如果需要）
+	if proxyURL != "" {
+		parsedProxy, err := url.Parse(proxyURL)
+		if err != nil {
+			return nil, fmt.Errorf("invalid proxy URL: %v", err)
+		}
+		transport.Proxy = go_http.ProxyURL(parsedProxy) // 修正：使用 parsedProxy
+	}
+
+	// 显式启用 HTTP/2
+	if err := go_http2.ConfigureTransport(transport); err != nil {
+		return nil, fmt.Errorf("failed to configure HTTP/2: %v", err)
+	}
+
+	// 创建 HTTP 客户端
+	client := &go_http.Client{
+		Transport: transport,
+		Timeout:   time.Duration(10*60*60) * time.Second, // 10小时超时，与原代码一致
+	}
+
+	// 创建请求
+	req, err := go_http.NewRequestWithContext(ctx, method, endPoint, strings.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %v", err)
+	}
+
+	// 设置请求头
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+
+	// 确保内容类型已设置（如果未提供）
+	if req.Header.Get("Content-Type") == "" && method != "GET" {
+		req.Header.Set("Content-Type", "text/plain;charset=UTF-8")
+	}
+
+	// 启动 goroutine 处理 SSE 响应
+	go dispatcherSSEWithHTTP2(ctx, requestID, req, client, sseChan)
+
+	return sseChan, nil
+}
+
+func dispatcherSSEWithHTTP2(ctx context.Context, requestID string, req *go_http.Request, client *go_http.Client, sseChan chan<- SSEResponse) {
+	defer client.CloseIdleConnections()
+
+	finalUrl := req.URL.String()
+
+	// 记录请求开始
+	//log.Printf("Starting HTTP/2 SSE request to: %s", finalUrl)
+
+	// 发送请求
+	resp, err := client.Do(req)
+	if err != nil {
+		// 解析错误
+		statusCode := 0
+		errorMsg := "Request error"
+
+		// 尝试从错误中提取更多信息
+		if urlErr, ok := err.(*url.Error); ok {
+			if urlErr.Timeout() {
+				errorMsg = "Request timeout"
+				statusCode = http.StatusRequestTimeout
+			} else if urlErr.Temporary() {
+				errorMsg = "Temporary error"
+				statusCode = http.StatusServiceUnavailable
+			}
+		}
+
+		// 发送错误响应
+		sseChan <- SSEResponse{
+			RequestID: requestID,
+			Status:    statusCode,
+			Data:      fmt.Sprintf("%s-> \n%s", errorMsg, err.Error()),
+			Done:      true,
+			FinalUrl:  finalUrl,
+		}
+		return
+	}
+	defer resp.Body.Close()
+
+	// 记录协议版本，确认是否使用 HTTP/2
+	//log.Printf("Response received, protocol: %s, status: %d", resp.Proto, resp.StatusCode)
+
+	// 检查HTTP状态码，非2xx状态码可能表示错误
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		errorMsg := string(bodyBytes)
+		if errorMsg == "" {
+			errorMsg = fmt.Sprintf("HTTP error status: %d", resp.StatusCode)
+		}
+
+		sseChan <- SSEResponse{
+			RequestID: requestID,
+			Status:    resp.StatusCode,
+			Data:      errorMsg,
+			Done:      true,
+			FinalUrl:  finalUrl,
+		}
+		return
+	}
+
+	// 更新最终URL（考虑重定向）
+	if resp.Request != nil && resp.Request.URL != nil {
+		finalUrl = resp.Request.URL.String()
+	}
+
+	reader := bufio.NewReader(resp.Body)
+	const maxRetries = 3
+	retries := 0
+
+	for {
+		// 检查上下文是否已取消
+		select {
+		case <-ctx.Done():
+			sseChan <- SSEResponse{
+				RequestID: requestID,
+				Status:    resp.StatusCode,
+				Data:      "Request cancelled: " + ctx.Err().Error(),
+				Done:      true,
+				FinalUrl:  finalUrl,
+			}
+			return
+		default:
+			// 继续处理
+		}
+
+		// 读取直到换行符
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+
+			if retries < maxRetries {
+				retries++
+				time.Sleep(time.Second * time.Duration(retries))
+				continue
+			}
+
+			sseChan <- SSEResponse{
+				RequestID: requestID,
+				Status:    resp.StatusCode,
+				Data:      "Error reading stream: " + err.Error(),
+				Done:      true,
+				FinalUrl:  finalUrl,
+			}
+			return
+		}
+
+		// 重置重试计数
+		retries = 0
+
+		// 去除行尾的空白字符
+		line = strings.TrimSpace(line)
+
+		// 跳过空行
+		if line == "" {
+			continue
+		}
+
+		// 处理数据行
+		//if strings.HasPrefix(line, "data: ") {
+		data := strings.TrimSpace(strings.TrimPrefix(line, "data: "))
+		if data != "" {
+			sseChan <- SSEResponse{
+				RequestID: requestID,
+				Status:    resp.StatusCode,
+				Data:      data,
+				Done:      false,
+				FinalUrl:  finalUrl,
+			}
+		}
+		//}
+
+		// 检查是否有结束标记
+		if strings.HasSuffix(line, "[DONE]") {
+			break
+		}
+	}
+
+	// 发送完成信号
+	sseChan <- SSEResponse{
+		RequestID: requestID,
+		Status:    resp.StatusCode,
+		Data:      "[DONE]",
+		Done:      true,
+		FinalUrl:  finalUrl,
+	}
 }
 
 func dispatcherSSE(res fullRequest, sseChan chan<- SSEResponse) {

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"github.com/gin-gonic/gin"
@@ -973,14 +974,32 @@ func ImagesForOpenAI(c *gin.Context) {
 				return
 			}
 
+			result := &model.OpenAIImagesGenerationResponse{
+				Created: time.Now().Unix(),
+				Data:    make([]*model.OpenAIImagesGenerationDataResponse, 0, 1),
+			}
+
+			imageDataResp := &model.OpenAIImagesGenerationDataResponse{
+				RevisedPrompt: openAIReq.Prompt,
+			}
+			if openAIReq.ResponseFormat == "b64_json" {
+				base64Str, err := getBase64ByUrl(imageData)
+				if err != nil {
+					logger.Errorf(ctx, "getBase64ByUrl error: %v", err)
+					continue
+				}
+				imageDataResp.B64Json = "data:image/webp;base64," + base64Str
+				result.Data = append(result.Data, imageDataResp)
+			} else {
+				imageDataResp.URL = imageData
+				result.Data = append(result.Data, imageDataResp)
+			}
+
 			// 返回成功响应
 			c.JSON(http.StatusOK, model.OpenAIImagesGenerationResponse{
 				Created: time.Now().Unix(),
 				Data: []*model.OpenAIImagesGenerationDataResponse{
-					{
-						URL:           imageData,
-						RevisedPrompt: openAIReq.Prompt,
-					},
+					imageDataResp,
 				},
 			})
 			return
@@ -1001,4 +1020,25 @@ func ImagesForOpenAI(c *gin.Context) {
 	logger.Errorf(ctx, "All cookies exhausted after %d attempts", maxRetries)
 	c.JSON(http.StatusInternalServerError, gin.H{"error": "All cookies are temporarily unavailable."})
 	return
+}
+
+func getBase64ByUrl(url string) (string, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch image: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("received non-200 status code: %d", resp.StatusCode)
+	}
+
+	imgData, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read image data: %w", err)
+	}
+
+	// Encode the image data to Base64
+	base64Str := base64.StdEncoding.EncodeToString(imgData)
+	return base64Str, nil
 }
