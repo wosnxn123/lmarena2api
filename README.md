@@ -49,6 +49,13 @@ _觉得有点意思的话 别忘了点个 ⭐_
 
 ## 部署
 
+### Mac本地部署[推荐]
+
+```shell
+nohup env CF_CLEARANCE=****** DEBUG=true LA_COOKIE=****** API_SECRET=123456  ./lmarena2api-macos > logfile.log 2>&1 &
+```
+
+
 ### 基于 Docker-Compose(All In One) 进行部署
 
 ```shell
