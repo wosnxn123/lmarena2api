@@ -63,20 +63,86 @@ func ChatForOpenAI(c *gin.Context) {
 		return
 	}
 
-	//if modelInfo.Type == "image" {
-	//	ImagesForOpenAI(c)
-	//	return
-	//}
+	if modelInfo.Type == "image" {
+		responseId := fmt.Sprintf(responseIDFormat, time.Now().Format("20060102150405"))
+		prompt := openAIReq.GetUserContent()[0]
+
+		// Use the shared image processing function
+		imageUrlList, err := processImageRequest(c, client, prompt, modelInfo)
+		if err != nil {
+			logger.Errorf(c.Request.Context(), "Image generation failed: %v", err)
+			c.JSON(http.StatusInternalServerError, model.OpenAIErrorResponse{
+				OpenAIError: model.OpenAIError{
+					Message: err.Error(),
+					Type:    "request_error",
+					Code:    "500",
+				},
+			})
+			return
+		}
+
+		var content []string
+		for _, item := range imageUrlList {
+			content = append(content, fmt.Sprintf("![Image](%s)", item))
+		}
+
+		if openAIReq.Stream {
+			jsonData, _ := json.Marshal(prompt)
+			streamResp := createStreamResponse(responseId, openAIReq.Model, jsonData, model.OpenAIDelta{Content: strings.Join(content, "\n"), Role: "assistant"}, nil)
+			err := sendSSEvent(c, streamResp)
+			if err != nil {
+				logger.Errorf(c.Request.Context(), err.Error())
+				c.JSON(http.StatusInternalServerError, model.OpenAIErrorResponse{
+					OpenAIError: model.OpenAIError{
+						Message: err.Error(),
+						Type:    "request_error",
+						Code:    "500",
+					},
+				})
+				return
+			}
+			c.SSEvent("", " [DONE]")
+			return
+		} else {
+			//promptTokens := common.CountTokenText(prompt, openAIReq.Model)
+			//completionTokens := common.CountTokenText(strings.Join(content, "\n"), openAIReq.Model)
+
+			finishReason := "stop"
+			// Create and return OpenAIChatCompletionResponse structure
+			resp := model.OpenAIChatCompletionResponse{
+				ID:      responseId,
+				Object:  "chat.completion",
+				Created: time.Now().Unix(),
+				Model:   openAIReq.Model,
+				Choices: []model.OpenAIChoice{
+					{
+						Message: model.OpenAIMessage{
+							Role:    "assistant",
+							Content: strings.Join(content, "\n"),
+						},
+						FinishReason: &finishReason,
+					},
+				},
+				Usage: model.OpenAIUsage{
+					//PromptTokens:     promptTokens,
+					//CompletionTokens: completionTokens,
+					//TotalTokens:      promptTokens + completionTokens,
+				},
+			}
+			c.JSON(200, resp)
+			return
+		}
+	}
 
 	//if openAIReq.MaxTokens > modelInfo.MaxTokens {
-	//	c.JSON(http.StatusBadRequest, model.OpenAIErrorResponse{
-	//		OpenAIError: model.OpenAIError{
-	//			Message: fmt.Sprintf("Max tokens %d exceeds limit %d", openAIReq.MaxTokens, modelInfo.MaxTokens),
-	//			Type:    "invalid_request_error",
-	//			Code:    "invalid_max_tokens",
-	//		},
-	//	})
-	//	return
+	//    c.JSON(http.StatusBadRequest, model.OpenAIErrorResponse{
+	//        OpenAIError: model.OpenAIError{
+	//            Message: fmt.Sprintf("Max tokens %d exceeds limit %d", openAIReq.MaxTokens, modelInfo.MaxTokens),
+	//            Type:    "invalid_request_error",
+	//            Code:    "invalid_max_tokens",
+	//        },
+	//    })
+	//    return
 	//}
 
 	if openAIReq.Stream {
@@ -85,7 +151,6 @@ func ChatForOpenAI(c *gin.Context) {
 		handleNonStreamRequest(c, client, openAIReq, modelInfo)
 	}
 }
-
 func handleNonStreamRequest(c *gin.Context, client cycletls.CycleTLS, openAIReq model.OpenAIChatCompletionRequest, modelInfo common.ModelInfo) {
 	ctx := c.Request.Context()
 	cookieManager := config.NewCookieManager()
@@ -902,126 +967,67 @@ func ImagesForOpenAI(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
-	cookieManager := config.NewCookieManager()
-	maxRetries := len(cookieManager.Cookies)
-	cookie, err := cookieManager.GetRandomCookie()
+
+	// 使用共享的图像处理函数
+	imageUrlList, err := processImageRequest(c, client, openAIReq.Prompt, modelInfo)
 	if err != nil {
-		c.JSON(500, gin.H{"error": err.Error()})
+		logger.Errorf(ctx, "Image generation failed: %v", err)
+		c.JSON(http.StatusInternalServerError, model.OpenAIErrorResponse{
+			OpenAIError: model.OpenAIError{
+				Message: err.Error(),
+				Type:    "request_error",
+				Code:    "500",
+			},
+		})
 		return
 	}
-	request := openAIReq.ToChatCompletionRequest()
-	for attempt := 0; attempt < maxRetries; attempt++ {
-		requestBody, err := createRequestBody(c, request, modelInfo, "image")
+
+	// 确保我们至少有一个图像URL
+	if len(imageUrlList) == 0 {
+		c.JSON(http.StatusInternalServerError, model.OpenAIErrorResponse{
+			OpenAIError: model.OpenAIError{
+				Message: "No images were generated",
+				Type:    "server_error",
+			},
+		})
+		return
+	}
+
+	// 只使用第一个生成的图像
+	imageData := imageUrlList[0]
+
+	// 创建响应
+	result := &model.OpenAIImagesGenerationResponse{
+		Created: time.Now().Unix(),
+		Data:    make([]*model.OpenAIImagesGenerationDataResponse, 0, 1),
+	}
+
+	imageDataResp := &model.OpenAIImagesGenerationDataResponse{
+		RevisedPrompt: openAIReq.Prompt,
+	}
+
+	if openAIReq.ResponseFormat == "b64_json" {
+		base64Str, err := getBase64ByUrl(imageData)
 		if err != nil {
-			c.JSON(500, gin.H{"error": err.Error()})
-			return
-		}
-
-		jsonData, err := json.Marshal(requestBody)
-		if err != nil {
-			c.JSON(500, gin.H{"error": "Failed to marshal request body"})
-			return
-		}
-		sseChan, err := lmarena_api.MakeStreamChatRequest(c, client, jsonData, cookie, modelInfo)
-		if err != nil {
-			logger.Errorf(ctx, "MakeStreamChatRequest err on attempt %d: %v", attempt+1, err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-
-		isRateLimit := false
-	SSELoop:
-		for response := range sseChan {
-			data := response.Data
-			if data == "" {
-				continue
-			}
-			if response.Done {
-				switch {
-				case common.IsUsageLimitExceeded(data):
-					isRateLimit = true
-					logger.Warnf(ctx, "Cookie Usage limit exceeded, switching to next cookie, attempt %d/%d, COOKIE:%s", attempt+1, maxRetries, cookie)
-					config.RemoveCookie(cookie)
-					break SSELoop
-				case common.IsServerError(data):
-					logger.Errorf(ctx, errServerErrMsg)
-					c.JSON(http.StatusInternalServerError, gin.H{"error": errServerErrMsg})
-					return
-				case common.IsNotLogin(data):
-					isRateLimit = true
-					logger.Warnf(ctx, "Cookie Not Login, switching to next cookie, attempt %d/%d, COOKIE:%s", attempt+1, maxRetries, cookie)
-					break SSELoop
-				case common.IsRateLimit(data):
-					isRateLimit = true
-					logger.Warnf(ctx, "Cookie rate limited, switching to next cookie, attempt %d/%d, COOKIE:%s", attempt+1, maxRetries, cookie)
-					config.AddRateLimitCookie(cookie, time.Now().Add(time.Duration(config.RateLimitCookieLockDuration)*time.Second))
-					break SSELoop
-				}
-				logger.Warnf(ctx, response.Data)
-				return
-			}
-
-			logger.Debug(ctx, strings.TrimSpace(data))
-
-			imageData, ok := processImageData(c, data, modelInfo)
-			if !ok {
-				c.JSON(http.StatusInternalServerError, model.OpenAIErrorResponse{
-					OpenAIError: model.OpenAIError{
-						Message: "Invalid image data format",
-						Type:    "invalid_request_error",
-					},
-				})
-				return
-			}
-
-			result := &model.OpenAIImagesGenerationResponse{
-				Created: time.Now().Unix(),
-				Data:    make([]*model.OpenAIImagesGenerationDataResponse, 0, 1),
-			}
-
-			imageDataResp := &model.OpenAIImagesGenerationDataResponse{
-				RevisedPrompt: openAIReq.Prompt,
-			}
-			if openAIReq.ResponseFormat == "b64_json" {
-				base64Str, err := getBase64ByUrl(imageData)
-				if err != nil {
-					logger.Errorf(ctx, "getBase64ByUrl error: %v", err)
-					continue
-				}
-				imageDataResp.B64Json = "data:image/webp;base64," + base64Str
-				result.Data = append(result.Data, imageDataResp)
-			} else {
-				imageDataResp.URL = imageData
-				result.Data = append(result.Data, imageDataResp)
-			}
-
-			// 返回成功响应
-			c.JSON(http.StatusOK, model.OpenAIImagesGenerationResponse{
-				Created: time.Now().Unix(),
-				Data: []*model.OpenAIImagesGenerationDataResponse{
-					imageDataResp,
+			logger.Errorf(ctx, "getBase64ByUrl error: %v", err)
+			c.JSON(http.StatusInternalServerError, model.OpenAIErrorResponse{
+				OpenAIError: model.OpenAIError{
+					Message: fmt.Sprintf("Failed to convert image to base64: %v", err),
+					Type:    "server_error",
 				},
 			})
 			return
 		}
-		if !isRateLimit {
-			return
-		}
-
-		// 获取下一个可用的cookie继续尝试
-		cookie, err = cookieManager.GetNextCookie()
-		if err != nil {
-			logger.Errorf(ctx, "No more valid cookies available after attempt %d", attempt+1)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-
+		imageDataResp.B64Json = "" + base64Str
+	} else {
+		imageDataResp.URL = imageData
 	}
-	logger.Errorf(ctx, "All cookies exhausted after %d attempts", maxRetries)
-	c.JSON(http.StatusInternalServerError, gin.H{"error": "All cookies are temporarily unavailable."})
-	return
-}
 
+	result.Data = append(result.Data, imageDataResp)
+
+	// 返回成功响应
+	c.JSON(http.StatusOK, result)
+}
 func getBase64ByUrl(url string) (string, error) {
 	resp, err := http.Get(url)
 	if err != nil {
@@ -1041,4 +1047,99 @@ func getBase64ByUrl(url string) (string, error) {
 	// Encode the image data to Base64
 	base64Str := base64.StdEncoding.EncodeToString(imgData)
 	return base64Str, nil
+}
+
+// processImageRequest handles image generation requests and returns image URLs
+func processImageRequest(c *gin.Context, client cycletls.CycleTLS, prompt string, modelInfo common.ModelInfo) ([]string, error) {
+	ctx := c.Request.Context()
+	cookieManager := config.NewCookieManager()
+	maxRetries := len(cookieManager.Cookies)
+	cookie, err := cookieManager.GetRandomCookie()
+	if err != nil {
+		return nil, err
+	}
+
+	// Create a chat completion request for image generation
+	request := &model.OpenAIChatCompletionRequest{
+		Messages: []model.OpenAIChatMessage{
+			{
+				Role:    "user",
+				Content: prompt,
+			},
+		},
+	}
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		requestBody, err := createRequestBody(c, request, modelInfo, "image")
+		if err != nil {
+			return nil, err
+		}
+
+		jsonData, err := json.Marshal(requestBody)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal request body: %v", err)
+		}
+
+		sseChan, err := lmarena_api.MakeStreamChatRequest(c, client, jsonData, cookie, modelInfo)
+		if err != nil {
+			logger.Errorf(ctx, "MakeStreamChatRequest err on attempt %d: %v", attempt+1, err)
+			continue
+		}
+
+		isRateLimit := false
+		var imageUrls []string
+
+		for response := range sseChan {
+			data := response.Data
+			if data == "" {
+				continue
+			}
+			if response.Done {
+				switch {
+				case common.IsUsageLimitExceeded(data):
+					isRateLimit = true
+					logger.Warnf(ctx, "Cookie Usage limit exceeded, switching to next cookie, attempt %d/%d, COOKIE:%s", attempt+1, maxRetries, cookie)
+					config.RemoveCookie(cookie)
+					break
+				case common.IsServerError(data):
+					logger.Errorf(ctx, errServerErrMsg)
+					return nil, fmt.Errorf(errServerErrMsg)
+				case common.IsNotLogin(data):
+					isRateLimit = true
+					logger.Warnf(ctx, "Cookie Not Login, switching to next cookie, attempt %d/%d, COOKIE:%s", attempt+1, maxRetries, cookie)
+					break
+				case common.IsRateLimit(data):
+					isRateLimit = true
+					logger.Warnf(ctx, "Cookie rate limited, switching to next cookie, attempt %d/%d, COOKIE:%s", attempt+1, maxRetries, cookie)
+					config.AddRateLimitCookie(cookie, time.Now().Add(time.Duration(config.RateLimitCookieLockDuration)*time.Second))
+					break
+				}
+				logger.Warnf(ctx, response.Data)
+				break
+			}
+
+			logger.Debug(ctx, strings.TrimSpace(data))
+
+			imageData, ok := processImageData(c, data, modelInfo)
+			if !ok {
+				continue
+			}
+
+			imageUrls = append(imageUrls, imageData)
+		}
+
+		if !isRateLimit && len(imageUrls) > 0 {
+			return imageUrls, nil
+		}
+
+		// Get next available cookie and continue trying
+		cookie, err = cookieManager.GetNextCookie()
+		if err != nil {
+			logger.Errorf(ctx, "No more valid cookies available after attempt %d", attempt+1)
+			return nil, err
+		}
+	}
+
+	logger.Errorf(ctx, "All cookies exhausted after %d attempts", maxRetries)
+	return nil, fmt.Errorf("all cookies are temporarily unavailable")
 }
