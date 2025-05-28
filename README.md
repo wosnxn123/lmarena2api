@@ -16,11 +16,12 @@ _觉得有点意思的话 别忘了点个 ⭐_
 
 </div>
 
+> ⚠️**由于`lmarena`使用的是`Cloudflare`的交互式质询验证,因此强烈建议在`win`/`mac`环境下部署项目,启动完成后可使用内网穿透公网访问。**
 
 ## 功能
 
 - [x] 支持对话接口(流式/非流式)(`/chat/completions`),详情查看[支持模型](#支持模型)
-- [x] 支持文生图接口(`/images/generations`)
+- [x] 支持文生图兼容对话接口(`/chat/completions`)与生图接口(`/images/generations`)
 - [x] 支持自定义请求头校验值(Authorization)
 - [x] 支持cookie池(随机),详情查看[获取cookie](#cookie获取方式)
 - [x] 支持请求失败自动切换cookie重试(需配置cookie池)
