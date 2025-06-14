@@ -42,6 +42,7 @@ var ModelRegistry = map[string]ModelInfo{
 	"qwen3-30b-a3b":                           {"qwen3-30b-a3b", "9a066f6a-7205-4325-8d0b-d81cc4b049c0", "chat"},
 	"llama-4-maverick-17b-128e-instruct":      {"llama-4-maverick-17b-128e-instruct", "b5ad3ab7-fc56-4ecd-8921-bd56b55c1159", "chat"},
 	"gemini-2.5-pro-preview-05-06":            {"gemini-2.5-pro-preview-05-06", "0337ee08-8305-40c0-b820-123ad42b60cf", "chat"},
+	"gemini-2.5-pro-preview-06-05":            {"gemini-2.5-pro-preview-06-05", "e2d9d353-6dbe-4414-bf87-bd289d523726", "chat"},
 
 	"gemini-2.0-flash-preview-image-generation": {"gemini-2.0-flash-preview-image-generation", "69bbf7d4-9f44-447e-a868-abc4f7a31810", "image"},
 	"imagen-3.0-generate-002":                   {"imagen-3.0-generate-002", "51ad1d79-61e2-414c-99e3-faeb64bb6b1b", "image"},
