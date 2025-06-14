@@ -192,6 +192,7 @@ Render 可以直接部署 docker 镜像,不需要 fork 仓库：[Render](https:/
 | gemini-2.0-flash-001                    |
 | gemini-2.5-flash-preview-04-17          |
 | gemini-2.5-pro-preview-05-06            |
+| gemini-2.5-pro-preview-06-05            |
 | gemma-3-27b-it                          |
 | llama-3.3-70b-instruct                  |
 | llama-4-maverick-03-26-experimental     |
